@@ -15,12 +15,6 @@ def sparse_matrix(N: int, sparsity_percent: float,min_value: float = 1.0,max_val
         total = N * N
         k = min(math.ceil(total * (sparsity_percent / 100.0)), total)
     
-    print(f"Dimensão: {N}x{N}")
-    print(f"Esparsidade: {sparsity_percent}%")
-    print(f"Elementos não nulos (k): {k}")
-    print(f"------------------------------")
-
-  
     random_indices = random.sample(range(total), k)
     result = []
     for index in random_indices:
