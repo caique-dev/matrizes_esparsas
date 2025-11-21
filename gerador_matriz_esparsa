@@ -1,0 +1,101 @@
+import random
+import math
+
+def sparse_matrix(N: int, sparsity_percent: float,min_value: float = 1.0,max_value: float = 100.0,seed: int = None) -> list:
+
+    if seed is not None:
+        random.seed(seed)
+
+    if(N >=10000):
+        total = N*N
+        sparsity_percent = 1/(pow(10,sparsity_percent)) 
+        k = min(math.ceil(total * (sparsity_percent)),total)
+        
+    if(N>0 and N<10000):
+        total = N * N
+        k = min(math.ceil(total * (sparsity_percent / 100.0)), total)
+    
+    print(f"Dimensão: {N}x{N}")
+    print(f"Esparsidade: {sparsity_percent}%")
+    print(f"Elementos não nulos (k): {k}")
+    print(f"------------------------------")
+
+  
+    random_indices = random.sample(range(total), k)
+    result = []
+    for index in random_indices:
+        r = index // N
+        c = index % N
+        v = random.uniform(min_value, max_value)
+        result.append((r, c, v))
+        
+    return result
+
+if __name__ == '__main__':
+    N1 = 100
+    P1 = 1
+    matrix1 = sparse_matrix(N1, P1)
+
+    N2 = 100
+    P2 = 5 
+    matrix2 = sparse_matrix(N2, P2)
+
+    N2 = 100
+    P2 = 10 
+    matrix2 = sparse_matrix(N2, P2)
+
+    N2 = 100
+    P2 = 20 
+    matrix2 = sparse_matrix(N2, P2)
+
+    N1 = 1000
+    P1 = 1
+    matrix1 = sparse_matrix(N1, P1)
+
+    N2 = 1000
+    P2 = 5 
+    matrix2 = sparse_matrix(N2, P2)
+
+    N2 = 1000
+    P2 = 10 
+    matrix2 = sparse_matrix(N2, P2)
+
+    N2 = 1000
+    P2 = 20 
+    matrix2 = sparse_matrix(N2, P2)
+
+    N2 = 10000
+    P2 = 4 
+    matrix2 = sparse_matrix(N2, P2)
+
+    N2 = 10000
+    P2 = 5 
+    matrix2 = sparse_matrix(N2, P2)
+
+    N2 = 10000
+    P2 = 6 
+    matrix2 = sparse_matrix(N2, P2)
+
+    N2 = 100000
+    P2 = 5 
+    matrix2 = sparse_matrix(N2, P2)
+
+    N2 = 100000
+    P2 = 6 
+    matrix2 = sparse_matrix(N2, P2)
+
+    N2 = 100000
+    P2 = 7 
+    matrix2 = sparse_matrix(N2, P2)
+
+    N2 = 1000000
+    P2 = 6 
+    matrix2 = sparse_matrix(N2, P2)
+
+    N2 = 1000000
+    P2 = 7 
+    matrix2 = sparse_matrix(N2, P2)
+
+    N2 = 1000000
+    P2 = 8 
+    matrix2 = sparse_matrix(N2, P2)
