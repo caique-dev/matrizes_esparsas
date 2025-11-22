@@ -158,14 +158,66 @@ def benchmark(Ns, sparsity):
 
     return tempo, memoria
 
+def gerar_tabela_matplotlib(Ns, tempo, memoria):
+    colunas = [
+        "N",
+        "GET esp", "GET trad",
+        "SOMA esp", "SOMA trad",
+        "ESC esp", "ESC trad",
+        "MULT esp", "MULT trad",
+        "TRANSP esp", "TRANSP trad",
+        "MEM GET esp", "MEM GET trad",
+        "MEM SOMA esp", "MEM SOMA trad",
+        "MEM ESC esp", "MEM ESC trad",
+        "MEM MULT esp", "MEM MULT trad",
+        "MEM TRANSP esp", "MEM TRANSP trad"
+    ]
+
+    linhas = []
+    for idx, N in enumerate(Ns):
+        linha = [
+            N,
+            tempo["GET"][idx], tempo["GET_trad"][idx],
+            tempo["SOMA"][idx], tempo["SOMA_trad"][idx],
+            tempo["ESCALAR"][idx], tempo["ESCALAR_trad"][idx],
+            tempo["MULT"][idx], tempo["MULT_trad"][idx],
+            tempo["TRANSP"][idx], tempo["TRANSP_trad"][idx],
+            memoria["GET"][idx], memoria["GET_trad"][idx],
+            memoria["SOMA"][idx], memoria["SOMA_trad"][idx],
+            memoria["ESCALAR"][idx], memoria["ESCALAR_trad"][idx],
+            memoria["MULT"][idx], memoria["MULT_trad"][idx],
+            memoria["TRANSP"][idx], memoria["TRANSP_trad"][idx]
+        ]
+        linhas.append([
+            "" if v is None else round(v, 6) for v in linha
+        ])
+
+    fig, ax = plt.subplots(figsize=(20, 6))
+    ax.axis("off")
+
+    tabela = ax.table(
+        cellText=linhas,
+        colLabels=colunas,
+        cellLoc='center',
+        loc='center'
+    )
+
+    tabela.scale(1, 2)
+    tabela.auto_set_font_size(False)
+    tabela.set_fontsize(8)
+
+    plt.title("Resultados de Tempo e Memória — Matrizes Esparsas vs Tradicionais", fontsize=14)
+
+    plt.savefig("tabela_resultados.png", dpi=200, bbox_inches="tight")
+    print("Tabela salva como tabela_resultados.png")
+
 
 if __name__ == "__main__":
     Ns = [50, 300, 500, 1000, 10000]
     sparsity = 5
 
     tempo, memoria = benchmark(Ns, sparsity)
-
-    # --------- PLOTS CORRIGIDOS ---------
+    gerar_tabela_matplotlib(Ns, tempo, memoria)
     for op in ["GET", "SOMA", "ESCALAR", "MULT", "TRANSP"]:
         plt.figure()
 
