@@ -7,6 +7,10 @@ from matrizEsparsa import matrizEsparsa
 from matriz2 import sparse_matrix
 
 
+# ======================================================
+#  MEDIÇÃO DE TEMPO E MEMÓRIA
+# ======================================================
+
 def medir_tempo(func):
     inicio = time.perf_counter()
     func()
@@ -19,8 +23,12 @@ def medir_memoria(func):
     func()
     _, mem_pico = tracemalloc.get_traced_memory()
     tracemalloc.stop()
-    return mem_pico / 1024
+    return mem_pico / 1024  # KB
 
+
+# ======================================================
+#  MATRIZ TRADICIONAL
+# ======================================================
 
 def criar_matriz_tradicional(N, elementos):
     mat = []
@@ -88,179 +96,277 @@ def transpor_tradicional(A, N):
     return T
 
 
+# ======================================================
+#  MATRIZ ESPARSA BASEADA EM DICTS
+# ======================================================
+
+def criar_matriz_esparsa_dict(rows, cols):
+    return {"rows": rows, "cols": cols, "data": {}}
+
+
+def get_dict(A, i, j):
+    return A["data"].get(i, {}).get(j, 0)
+
+
+def set_val_dict(A, i, j, value):
+    if value == 0:
+        if i in A["data"] and j in A["data"][i]:
+            del A["data"][i][j]
+            if not A["data"][i]:
+                del A["data"][i]
+    else:
+        A["data"].setdefault(i, {})[j] = value
+
+
+def transpor_dict(A):
+    T = criar_matriz_esparsa_dict(A["cols"], A["rows"])
+    for i, row in A["data"].items():
+        for j, v in row.items():
+            set_val_dict(T, j, i, v)
+    return T
+
+
+def somar_dict(A, B):
+    C = criar_matriz_esparsa_dict(A["rows"], A["cols"])
+    for i, row in A["data"].items():
+        for j, v in row.items():
+            set_val_dict(C, i, j, v)
+    for i, row in B["data"].items():
+        for j, v in row.items():
+            set_val_dict(C, i, j, get_dict(C, i, j) + v)
+    return C
+
+
+def escalar_dict(alpha, A):
+    C = criar_matriz_esparsa_dict(A["rows"], A["cols"])
+    for i, row in A["data"].items():
+        for j, v in row.items():
+            set_val_dict(C, i, j, alpha * v)
+    return C
+
+
+def multiplicar_dict(A, B):
+    C = criar_matriz_esparsa_dict(A["rows"], B["cols"])
+
+    for i, rowA in A["data"].items():
+        for k, vA in rowA.items():
+            if k not in B["data"]:
+                continue
+            for j, vB in B["data"][k].items():
+                set_val_dict(C, i, j, get_dict(C, i, j) + vA * vB)
+
+    return C
+
+
+# ======================================================
+#  BENCHMARK
+# ======================================================
+
 def benchmark(Ns, sparsity):
 
-    tempo = {op: [] for op in ["GET", "SOMA", "ESCALAR", "MULT", "TRANSP"]}
-    memoria = {op: [] for op in ["GET", "SOMA", "ESCALAR", "MULT", "TRANSP"]}
+    ops = ["GET", "SOMA", "ESCALAR", "MULT", "TRANSP"]
+
+    tempo = {op: [] for op in ops}
+    memoria = {op: [] for op in ops}
+
+    tempo.update({op + "_trad": [] for op in ops})
+    memoria.update({op + "_trad": [] for op in ops})
+
+    tempo.update({op + "_dict": [] for op in ops})
+    memoria.update({op + "_dict": [] for op in ops})
 
     for N in Ns:
         print(f"\n---- Rodando N={N} ----")
         elementos = sparse_matrix(N, sparsity, seed=123)
 
+        # MATRIZ ESPARSA ORIGINAL
         mA = matrizEsparsa()
         mB = matrizEsparsa()
         for (i, j, v) in elementos:
             mA.set(i, j, v)
             mB.set(i, j, v)
 
-        # GET
-        tempo["GET"].append(medir_tempo(lambda: [mA.get(i, j) for (i, j, _) in elementos]))
-        memoria["GET"].append(medir_memoria(lambda: [mA.get(i, j) for (i, j, _) in elementos]))
+        # DICT
+        A_dict = criar_matriz_esparsa_dict(N, N)
+        B_dict = criar_matriz_esparsa_dict(N, N)
+        for (i, j, v) in elementos:
+            set_val_dict(A_dict, i, j, v)
+            set_val_dict(B_dict, i, j, v)
 
-        # SOMA
-        tempo["SOMA"].append(medir_tempo(lambda: mA.soma(mB)))
-        memoria["SOMA"].append(medir_memoria(lambda: mA.soma(mB)))
-
-        # ESCALAR
-        tempo["ESCALAR"].append(medir_tempo(lambda: mA.multiplica_escalar(3)))
-        memoria["ESCALAR"].append(medir_memoria(lambda: mA.multiplica_escalar(3)))
-
-        # MULTIPLICAÇÃO (limitada)
-        if N <= 500:
-            tempo["MULT"].append(medir_tempo(lambda: mA.multiplica_matrizes(mB)))
-            memoria["MULT"].append(medir_memoria(lambda: mA.multiplica_matrizes(mB)))
-        else:
-            tempo["MULT"].append(None)
-            memoria["MULT"].append(None)
-
-        # TRANSPOR 
-        tempo["TRANSP"].append(medir_tempo(lambda: mA.transpor()))
-        memoria["TRANSP"].append(medir_memoria(lambda: mA.transpor()))
-
-        # MATRIZ TRADICIONAL
+        # TRADICIONAL
         A = criar_matriz_tradicional(N, elementos)
         B = criar_matriz_tradicional(N, elementos)
 
-        tempo.setdefault("GET_trad", []).append(medir_tempo(lambda: [A[i][j] for (i, j, _) in elementos]))
-        memoria.setdefault("GET_trad", []).append(medir_memoria(lambda: [A[i][j] for (i, j, _) in elementos]))
+        # ------------------ GET ------------------
+        tempo["GET"].append(medir_tempo(lambda: [mA.get(i, j) for (i, j, _) in elementos]))
+        memoria["GET"].append(medir_memoria(lambda: [mA.get(i, j) for (i, j, _) in elementos]))
 
-        tempo.setdefault("SOMA_trad", []).append(medir_tempo(lambda: soma_tradicional(A, B, N)))
-        memoria.setdefault("SOMA_trad", []).append(medir_memoria(lambda: soma_tradicional(A, B, N)))
+        tempo["GET_dict"].append(medir_tempo(lambda: [get_dict(A_dict, i, j) for (i, j, _) in elementos]))
+        memoria["GET_dict"].append(medir_memoria(lambda: [get_dict(A_dict, i, j) for (i, j, _) in elementos]))
 
-        tempo.setdefault("ESCALAR_trad", []).append(medir_tempo(lambda: multiplica_escalar_tradicional(A, 3, N)))
-        memoria.setdefault("ESCALAR_trad", []).append(medir_memoria(lambda: multiplica_escalar_tradicional(A, 3, N)))
+        tempo["GET_trad"].append(medir_tempo(lambda: [A[i][j] for (i, j, _) in elementos]))
+        memoria["GET_trad"].append(medir_memoria(lambda: [A[i][j] for (i, j, _) in elementos]))
 
-        # MULT TRAD (limitada)
+        # ------------------ SOMA ------------------
+        tempo["SOMA"].append(medir_tempo(lambda: mA.soma(mB)))
+        memoria["SOMA"].append(medir_memoria(lambda: mA.soma(mB)))
+
+        tempo["SOMA_dict"].append(medir_tempo(lambda: somar_dict(A_dict, B_dict)))
+        memoria["SOMA_dict"].append(medir_memoria(lambda: somar_dict(A_dict, B_dict)))
+
+        tempo["SOMA_trad"].append(medir_tempo(lambda: soma_tradicional(A, B, N)))
+        memoria["SOMA_trad"].append(medir_memoria(lambda: soma_tradicional(A, B, N)))
+
+        # ------------------ ESCALAR ------------------
+        tempo["ESCALAR"].append(medir_tempo(lambda: mA.multiplica_escalar(3)))
+        memoria["ESCALAR"].append(medir_memoria(lambda: mA.multiplica_escalar(3)))
+
+        tempo["ESCALAR_dict"].append(medir_tempo(lambda: escalar_dict(3, A_dict)))
+        memoria["ESCALAR_dict"].append(medir_memoria(lambda: escalar_dict(3, A_dict)))
+
+        tempo["ESCALAR_trad"].append(medir_tempo(lambda: multiplica_escalar_tradicional(A, 3, N)))
+        memoria["ESCALAR_trad"].append(medir_memoria(lambda: multiplica_escalar_tradicional(A, 3, N)))
+
+        # ------------------ MULTIPLICAÇÃO ------------------
         if N <= 500:
-            tempo.setdefault("MULT_trad", []).append(medir_tempo(lambda: multiplica_matrizes_tradicional(A, B, N)))
-            memoria.setdefault("MULT_trad", []).append(medir_memoria(lambda: multiplica_matrizes_tradicional(A, B, N)))
-        else:
-            tempo.setdefault("MULT_trad", []).append(None)
-            memoria.setdefault("MULT_trad", []).append(None)
+            tempo["MULT"].append(medir_tempo(lambda: mA.multiplica_matrizes(mB)))
+            memoria["MULT"].append(medir_memoria(lambda: mA.multiplica_matrizes(mB)))
 
-        # TRANSPORTE TRAD = pesado → limitar N>800
-        if N <= 800:
-            tempo.setdefault("TRANSP_trad", []).append(medir_tempo(lambda: transpor_tradicional(A, N)))
-            memoria.setdefault("TRANSP_trad", []).append(medir_memoria(lambda: transpor_tradicional(A, N)))
+            tempo["MULT_dict"].append(medir_tempo(lambda: multiplicar_dict(A_dict, B_dict)))
+            memoria["MULT_dict"].append(medir_memoria(lambda: multiplicar_dict(A_dict, B_dict)))
+
+            tempo["MULT_trad"].append(medir_tempo(lambda: multiplica_matrizes_tradicional(A, B, N)))
+            memoria["MULT_trad"].append(medir_memoria(lambda: multiplica_matrizes_tradicional(A, B, N)))
         else:
-            tempo.setdefault("TRANSP_trad", []).append(None)
-            memoria.setdefault("TRANSP_trad", []).append(None)
+            tempo["MULT"].append(None)
+            memoria["MULT"].append(None)
+            tempo["MULT_dict"].append(None)
+            memoria["MULT_dict"].append(None)
+            tempo["MULT_trad"].append(None)
+            memoria["MULT_trad"].append(None)
+
+        # ------------------ TRANSPOR ------------------
+        tempo["TRANSP"].append(medir_tempo(lambda: mA.transpor()))
+        memoria["TRANSP"].append(medir_memoria(lambda: mA.transpor()))
+
+        tempo["TRANSP_dict"].append(medir_tempo(lambda: transpor_dict(A_dict)))
+        memoria["TRANSP_dict"].append(medir_memoria(lambda: transpor_dict(A_dict)))
+
+        if N <= 800:
+            tempo["TRANSP_trad"].append(medir_tempo(lambda: transpor_tradicional(A, N)))
+            memoria["TRANSP_trad"].append(medir_memoria(lambda: transpor_tradicional(A, N)))
+        else:
+            tempo["TRANSP_trad"].append(None)
+            memoria["TRANSP_trad"].append(None)
 
     return tempo, memoria
 
-def gerar_tabela_matplotlib(Ns, tempo, memoria):
-    colunas = [
-        "N",
-        "GET esp", "GET trad",
-        "SOMA esp", "SOMA trad",
-        "ESC esp", "ESC trad",
-        "MULT esp", "MULT trad",
-        "TRANSP esp", "TRANSP trad",
-        "MEM GET esp", "MEM GET trad",
-        "MEM SOMA esp", "MEM SOMA trad",
-        "MEM ESC esp", "MEM ESC trad",
-        "MEM MULT esp", "MEM MULT trad",
-        "MEM TRANSP esp", "MEM TRANSP trad"
+
+# ======================================================
+#  GERAR GRÁFICOS
+# ======================================================
+
+def gerar_graficos(Ns, tempo, memoria):
+
+    ops = ["GET", "SOMA", "ESCALAR", "MULT", "TRANSP"]
+
+    for op in ops:
+        plt.figure()
+
+        for suf, label in [("", "Esparsa Original"),
+                           ("_dict", "Esparsa Dict"),
+                           ("_trad", "Tradicional")]:
+
+            xs = [Ns[i] for i in range(len(Ns)) if tempo[op + suf][i] is not None]
+            ys = [tempo[op + suf][i] for i in range(len(Ns)) if tempo[op + suf][i] is not None]
+
+            if xs:
+                plt.plot(xs, ys, label=label)
+
+        plt.title(f"Tempo — {op}")
+        plt.xlabel("N")
+        plt.ylabel("Tempo (s)")
+        plt.grid()
+        plt.legend()
+        plt.savefig(f"tempo_{op}.png")
+
+    for op in ops:
+        plt.figure()
+        for suf, label in [("", "Esparsa Original"),
+                           ("_dict", "Esparsa Dict"),
+                           ("_trad", "Tradicional")]:
+
+            xs = [Ns[i] for i in range(len(Ns)) if memoria[op + suf][i] is not None]
+            ys = [memoria[op + suf][i] for i in range(len(Ns)) if memoria[op + suf][i] is not None]
+
+            if xs:
+                plt.plot(xs, ys, label=label)
+
+        plt.title(f"Memória — {op}")
+        plt.xlabel("N")
+        plt.ylabel("Memória Pico (KB)")
+        plt.grid()
+        plt.legend()
+        plt.savefig(f"mem_{op}.png")
+
+
+# ======================================================
+#  GERAR CSV COMPLETO
+# ======================================================
+
+def gerar_csv_resultados(Ns, tempo, memoria, nome_arquivo="resultados_benchmark.csv"):
+    ops = ["GET", "SOMA", "ESCALAR", "MULT", "TRANSP"]
+
+    modelos = [
+        ("", "Esparsa Original"),
+        ("_dict", "Esparsa Dict"),
+        ("_trad", "Tradicional")
     ]
 
-    linhas = []
-    for idx, N in enumerate(Ns):
-        linha = [
-            N,
-            tempo["GET"][idx], tempo["GET_trad"][idx],
-            tempo["SOMA"][idx], tempo["SOMA_trad"][idx],
-            tempo["ESCALAR"][idx], tempo["ESCALAR_trad"][idx],
-            tempo["MULT"][idx], tempo["MULT_trad"][idx],
-            tempo["TRANSP"][idx], tempo["TRANSP_trad"][idx],
-            memoria["GET"][idx], memoria["GET_trad"][idx],
-            memoria["SOMA"][idx], memoria["SOMA_trad"][idx],
-            memoria["ESCALAR"][idx], memoria["ESCALAR_trad"][idx],
-            memoria["MULT"][idx], memoria["MULT_trad"][idx],
-            memoria["TRANSP"][idx], memoria["TRANSP_trad"][idx]
-        ]
-        linhas.append([
-            "" if v is None else round(v, 6) for v in linha
+    with open(nome_arquivo, mode="w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+
+        # Cabeçalho do CSV
+        writer.writerow([
+            "Operação",
+            "N",
+            "Modelo",
+            "Tempo (s)",
+            "Memória Pico (KB)"
         ])
 
-    fig, ax = plt.subplots(figsize=(20, 6))
-    ax.axis("off")
+        # Linhas
+        for op in ops:
+            for suf, nome_modelo in modelos:
+                for i in range(len(Ns)):
+                    tempo_val = tempo[op + suf][i]
+                    mem_val = memoria[op + suf][i]
 
-    tabela = ax.table(
-        cellText=linhas,
-        colLabels=colunas,
-        cellLoc='center',
-        loc='center'
-    )
+                    if tempo_val is None:
+                        continue
 
-    tabela.scale(1, 2)
-    tabela.auto_set_font_size(False)
-    tabela.set_fontsize(8)
+                    writer.writerow([
+                        op,
+                        Ns[i],
+                        nome_modelo,
+                        f"{tempo_val:.6f}",
+                        f"{mem_val:.3f}"
+                    ])
 
-    plt.title("Resultados de Tempo e Memória — Matrizes Esparsas vs Tradicionais", fontsize=14)
+    print(f"📄 CSV gerado: {nome_arquivo}")
 
-    plt.savefig("tabela_resultados.png", dpi=200, bbox_inches="tight")
-    print("Tabela salva como tabela_resultados.png")
 
+# ======================================================
+#  MAIN
+# ======================================================
 
 if __name__ == "__main__":
     Ns = [50, 300, 500, 1000, 10000]
     sparsity = 5
 
     tempo, memoria = benchmark(Ns, sparsity)
-    gerar_tabela_matplotlib(Ns, tempo, memoria)
-    for op in ["GET", "SOMA", "ESCALAR", "MULT", "TRANSP"]:
-        plt.figure()
 
-        Ns_e = [Ns[i] for i in range(len(Ns)) if tempo[op][i] is not None]
-        y_e = [tempo[op][i] for i in range(len(Ns)) if tempo[op][i] is not None]
+    gerar_graficos(Ns, tempo, memoria)
+    gerar_csv_resultados(Ns, tempo, memoria)
 
-        Ns_t = [Ns[i] for i in range(len(Ns)) if tempo[f"{op}_trad"][i] is not None]
-        y_t = [tempo[f"{op}_trad"][i] for i in range(len(Ns)) if tempo[f"{op}_trad"][i] is not None]
-
-        if len(Ns_e) > 0:
-            plt.plot(Ns_e, y_e, label=f"Esparsa ({op})")
-
-        if len(Ns_t) > 0:
-            plt.plot(Ns_t, y_t, label=f"Tradicional ({op})")
-
-        plt.title(f"Tempo {op}")
-        plt.xlabel("N")
-        plt.ylabel("Tempo (s)")
-        plt.legend()
-        plt.grid()
-        plt.savefig(f"tempo_{op.lower()}.png")
-
-    # --------- MEMÓRIA ---------
-    for op in ["GET", "SOMA", "ESCALAR", "MULT", "TRANSP"]:
-        plt.figure()
-
-        Ns_e = [Ns[i] for i in range(len(Ns)) if memoria[op][i] is not None]
-        y_e = [memoria[op][i] for i in range(len(Ns)) if memoria[op][i] is not None]
-
-        Ns_t = [Ns[i] for i in range(len(Ns)) if memoria[f"{op}_trad"][i] is not None]
-        y_t = [memoria[f"{op}_trad"][i] for i in range(len(Ns)) if memoria[f"{op}_trad"][i] is not None]
-
-        if len(Ns_e) > 0:
-            plt.plot(Ns_e, y_e, label=f"Esparsa ({op})")
-
-        if len(Ns_t) > 0:
-            plt.plot(Ns_t, y_t, label=f"Tradicional ({op})")
-
-        plt.title(f"Memória {op}")
-        plt.xlabel("N")
-        plt.ylabel("Memória Pico (KB)")
-        plt.legend()
-        plt.grid()
-        plt.savefig(f"memoria_{op.lower()}.png")
-
-    print("\nCódigo finalizado com sucesso. Gráficos gerados.")
+    print("\n🏁 Benchmark finalizado! Gráficos e CSV foram gerados.\n")
