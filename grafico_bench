@@ -1,0 +1,214 @@
+import time
+import tracemalloc
+import matplotlib.pyplot as plt
+import csv
+
+from matrizEsparsa import matrizEsparsa
+from matriz2 import sparse_matrix
+
+
+def medir_tempo(func):
+    inicio = time.perf_counter()
+    func()
+    fim = time.perf_counter()
+    return fim - inicio
+
+
+def medir_memoria(func):
+    tracemalloc.start()
+    func()
+    _, mem_pico = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+    return mem_pico / 1024
+
+
+def criar_matriz_tradicional(N, elementos):
+    mat = []
+    for i in range(N):
+        linha = []
+        for j in range(N):
+            linha.append(0)
+        mat.append(linha)
+    for (i, j, v) in elementos:
+        mat[i][j] = v
+    return mat
+
+
+def soma_tradicional(A, B, N):
+    C = []
+    for i in range(N):
+        linha = []
+        for j in range(N):
+            linha.append(0)
+        C.append(linha)
+    for i in range(N):
+        for j in range(N):
+            C[i][j] = A[i][j] + B[i][j]
+    return C
+
+
+def multiplica_escalar_tradicional(A, k, N):
+    C = []
+    for i in range(N):
+        linha = []
+        for j in range(N):
+            linha.append(0)
+        C.append(linha)
+    for i in range(N):
+        for j in range(N):
+            C[i][j] = A[i][j] * k
+    return C
+
+
+def multiplica_matrizes_tradicional(A, B, N):
+    C = []
+    for i in range(N):
+        linha = []
+        for j in range(N):
+            linha.append(0)
+        C.append(linha)
+    for i in range(N):
+        for k_idx in range(N): 
+            if A[i][k_idx] != 0:
+                for j in range(N):
+                    C[i][j] += A[i][k_idx] * B[k_idx][j]
+    return C
+
+
+def transpor_tradicional(A, N):
+    T = []
+    for i in range(N):
+        linha = []
+        for j in range(N):
+            linha.append(0)
+        T.append(linha)
+    for i in range(N):
+        for j in range(N):
+            T[j][i] = A[i][j]
+    return T
+
+
+def benchmark(Ns, sparsity):
+
+    tempo = {op: [] for op in ["GET", "SOMA", "ESCALAR", "MULT", "TRANSP"]}
+    memoria = {op: [] for op in ["GET", "SOMA", "ESCALAR", "MULT", "TRANSP"]}
+
+    for N in Ns:
+        print(f"\n---- Rodando N={N} ----")
+        elementos = sparse_matrix(N, sparsity, seed=123)
+
+        mA = matrizEsparsa()
+        mB = matrizEsparsa()
+        for (i, j, v) in elementos:
+            mA.set(i, j, v)
+            mB.set(i, j, v)
+
+        # GET
+        tempo["GET"].append(medir_tempo(lambda: [mA.get(i, j) for (i, j, _) in elementos]))
+        memoria["GET"].append(medir_memoria(lambda: [mA.get(i, j) for (i, j, _) in elementos]))
+
+        # SOMA
+        tempo["SOMA"].append(medir_tempo(lambda: mA.soma(mB)))
+        memoria["SOMA"].append(medir_memoria(lambda: mA.soma(mB)))
+
+        # ESCALAR
+        tempo["ESCALAR"].append(medir_tempo(lambda: mA.multiplica_escalar(3)))
+        memoria["ESCALAR"].append(medir_memoria(lambda: mA.multiplica_escalar(3)))
+
+        # MULTIPLICAÇÃO (limitada)
+        if N <= 500:
+            tempo["MULT"].append(medir_tempo(lambda: mA.multiplica_matrizes(mB)))
+            memoria["MULT"].append(medir_memoria(lambda: mA.multiplica_matrizes(mB)))
+        else:
+            tempo["MULT"].append(None)
+            memoria["MULT"].append(None)
+
+        # TRANSPOR 
+        tempo["TRANSP"].append(medir_tempo(lambda: mA.transpor()))
+        memoria["TRANSP"].append(medir_memoria(lambda: mA.transpor()))
+
+        # MATRIZ TRADICIONAL
+        A = criar_matriz_tradicional(N, elementos)
+        B = criar_matriz_tradicional(N, elementos)
+
+        tempo.setdefault("GET_trad", []).append(medir_tempo(lambda: [A[i][j] for (i, j, _) in elementos]))
+        memoria.setdefault("GET_trad", []).append(medir_memoria(lambda: [A[i][j] for (i, j, _) in elementos]))
+
+        tempo.setdefault("SOMA_trad", []).append(medir_tempo(lambda: soma_tradicional(A, B, N)))
+        memoria.setdefault("SOMA_trad", []).append(medir_memoria(lambda: soma_tradicional(A, B, N)))
+
+        tempo.setdefault("ESCALAR_trad", []).append(medir_tempo(lambda: multiplica_escalar_tradicional(A, 3, N)))
+        memoria.setdefault("ESCALAR_trad", []).append(medir_memoria(lambda: multiplica_escalar_tradicional(A, 3, N)))
+
+        # MULT TRAD (limitada)
+        if N <= 500:
+            tempo.setdefault("MULT_trad", []).append(medir_tempo(lambda: multiplica_matrizes_tradicional(A, B, N)))
+            memoria.setdefault("MULT_trad", []).append(medir_memoria(lambda: multiplica_matrizes_tradicional(A, B, N)))
+        else:
+            tempo.setdefault("MULT_trad", []).append(None)
+            memoria.setdefault("MULT_trad", []).append(None)
+
+        # TRANSPORTE TRAD = pesado → limitar N>800
+        if N <= 800:
+            tempo.setdefault("TRANSP_trad", []).append(medir_tempo(lambda: transpor_tradicional(A, N)))
+            memoria.setdefault("TRANSP_trad", []).append(medir_memoria(lambda: transpor_tradicional(A, N)))
+        else:
+            tempo.setdefault("TRANSP_trad", []).append(None)
+            memoria.setdefault("TRANSP_trad", []).append(None)
+
+    return tempo, memoria
+
+
+if __name__ == "__main__":
+    Ns = [50, 300, 500, 1000, 10000]
+    sparsity = 5
+
+    tempo, memoria = benchmark(Ns, sparsity)
+
+    # --------- PLOTS CORRIGIDOS ---------
+    for op in ["GET", "SOMA", "ESCALAR", "MULT", "TRANSP"]:
+        plt.figure()
+
+        Ns_e = [Ns[i] for i in range(len(Ns)) if tempo[op][i] is not None]
+        y_e = [tempo[op][i] for i in range(len(Ns)) if tempo[op][i] is not None]
+
+        Ns_t = [Ns[i] for i in range(len(Ns)) if tempo[f"{op}_trad"][i] is not None]
+        y_t = [tempo[f"{op}_trad"][i] for i in range(len(Ns)) if tempo[f"{op}_trad"][i] is not None]
+
+        if len(Ns_e) > 0:
+            plt.plot(Ns_e, y_e, label=f"Esparsa ({op})")
+
+        if len(Ns_t) > 0:
+            plt.plot(Ns_t, y_t, label=f"Tradicional ({op})")
+
+        plt.title(f"Tempo {op}")
+        plt.xlabel("N")
+        plt.ylabel("Tempo (s)")
+        plt.legend()
+        plt.grid()
+        plt.savefig(f"tempo_{op.lower()}.png")
+
+    # --------- MEMÓRIA ---------
+    for op in ["GET", "SOMA", "ESCALAR", "MULT", "TRANSP"]:
+        plt.figure()
+
+        Ns_e = [Ns[i] for i in range(len(Ns)) if memoria[op][i] is not None]
+        y_e = [memoria[op][i] for i in range(len(Ns)) if memoria[op][i] is not None]
+
+        Ns_t = [Ns[i] for i in range(len(Ns)) if memoria[f"{op}_trad"][i] is not None]
+        y_t = [memoria[f"{op}_trad"][i] for i in range(len(Ns)) if memoria[f"{op}_trad"][i] is not None]
+
+        if len(Ns_e) > 0:
+            plt.plot(Ns_e, y_e, label=f"Esparsa ({op})")
+
+        if len(Ns_t) > 0:
+            plt.plot(Ns_t, y_t, label=f"Tradicional ({op})")
+
+        plt.title(f"Memória {op}")
+        plt.xlabel("N")
+        plt.ylabel("Memória Pico (KB)")
+        plt.legend()
+        plt.grid()
+        plt.savefig(f"memoria_{op.lower()}.png")
+
+    print("\nCódigo finalizado com sucesso. Gráficos gerados.")
